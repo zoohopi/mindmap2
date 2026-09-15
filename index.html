@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>흐름 · 오른쪽 아래로 뻗는 마인드맵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F1EC;
+    --paper-2:#EAE7DF;
+    --ink:#182338;
+    --ink-soft:#5A6478;
+    --line:#C7C2B6;
+    --dot:#D3CEC2;
+    --edge:#8C93A4;
+    --white:#FDFCFA;
+    --hi:#F5C24B;        /* signal amber */
+    --sel:#2C6E7F;        /* selection teal */
+    --danger:#C0553B;
+    --shadow:0 1px 2px rgba(24,35,56,.08), 0 6px 20px rgba(24,35,56,.10);
+    /* depth accent cycle */
+    --d0:#2C3E5C; --d1:#2C6E7F; --d2:#6A5A9C; --d3:#B4823A; --d4:#A64B63; --d5:#3E7C55;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--paper);color:var(--ink);
+    font-family:"Inter",system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+
+  /* ---------- Top bar ---------- */
+  .bar{position:fixed;top:0;left:0;right:0;height:56px;z-index:40;display:flex;align-items:center;
+    gap:14px;padding:0 16px;background:rgba(243,241,236,.86);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);}
+  .brand{display:flex;align-items:baseline;gap:9px;}
+  .brand b{font-family:"Space Grotesk";font-weight:700;font-size:19px;letter-spacing:-.01em;}
+  .brand span{font-family:"Space Mono";font-size:11px;color:var(--ink-soft);letter-spacing:.02em;}
+  .arrow-badge{width:24px;height:24px;border:1.5px solid var(--ink);border-radius:6px;display:grid;place-items:center;transform:rotate(0deg);}
+  .arrow-badge svg{display:block;}
+  .spacer{flex:1;}
+  .tools{display:flex;align-items:center;gap:6px;}
+  .btn{font-family:"Space Grotesk";font-weight:600;font-size:13px;color:var(--ink);
+    background:var(--white);border:1px solid var(--line);border-radius:8px;padding:8px 11px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;transition:.12s;line-height:1;}
+  .btn:hover{border-color:var(--ink);transform:translateY(-1px);}
+  .btn:active{transform:translateY(0);}
+  .btn.ghost{background:transparent;}
+  .btn.icon{padding:8px;width:36px;justify-content:center;}
+  .btn.hi{background:var(--ink);color:var(--white);border-color:var(--ink);}
+  .btn.hi:hover{background:#0f1929;}
+  .sep{width:1px;height:24px;background:var(--line);margin:0 4px;}
+  kbd{font-family:"Space Mono";font-size:11px;background:var(--paper-2);border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:5px;padding:1px 5px;color:var(--ink-soft);}
+  #saved{font-family:"Space Mono";font-size:11px;color:var(--ink-soft);opacity:0;transition:opacity .2s;
+    white-space:nowrap;}
+  #saved.on{opacity:1;}
+
+  /* ---------- Canvas ---------- */
+  #stage{position:fixed;inset:56px 0 0 0;overflow:hidden;cursor:grab;
+    background-color:var(--paper);
+    background-image:radial-gradient(var(--dot) 1.4px, transparent 1.4px);
+    background-size:26px 26px;background-position:0 0;}
+  #stage.panning{cursor:grabbing;}
+  #world{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform;}
+  #edges{position:absolute;top:0;left:0;overflow:visible;pointer-events:none;}
+
+  /* origin marker — 루트마다 하나씩 */
+  #origin{position:absolute;top:0;left:0;pointer-events:none;}
+  #origin .origin{position:absolute;display:flex;align-items:center;gap:7px;white-space:nowrap;
+    transform:translate(-50%,-50%);}
+  #origin .ring{width:11px;height:11px;border:2px solid var(--ink);border-radius:50%;background:var(--hi);}
+  #origin .lbl{font-family:"Space Mono";font-size:11px;letter-spacing:.1em;color:var(--ink-soft);
+    text-transform:uppercase;}
+
+  /* ---------- Node ---------- */
+  /* width:max-content — #world 가 폭이 없어서 그냥 두면 글자가 최소 폭으로 접힌다 */
+  .node{position:absolute;width:max-content;min-width:96px;max-width:210px;background:var(--white);
+    border:1.5px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
+    padding:9px 12px 10px;cursor:default;user-select:none;transition:border-color .1s, box-shadow .1s;
+    display:flex;flex-direction:column;}
+  .node:hover{border-color:var(--edge);}
+  .node.sel{border-color:var(--sel);box-shadow:0 0 0 3px rgba(44,110,127,.16), var(--shadow);}
+  .node .tag{font-family:"Space Mono";font-size:10px;font-weight:700;letter-spacing:.04em;flex:0 0 auto;
+    color:var(--accent,var(--ink-soft));margin-bottom:3px;display:flex;align-items:center;gap:5px;}
+  .node .tag .swatch{width:7px;height:7px;border-radius:2px;background:var(--accent,var(--ink-soft));}
+  .node .txt{font-size:14px;line-height:1.32;color:var(--ink);word-break:break-word;white-space:pre-wrap;
+    outline:none;min-height:18px;flex:0 1 auto;overflow:auto;}
+  .node .txt.empty:before{content:"내용 입력…";color:var(--ink-soft);}
+  .node.editing{cursor:text;}
+  .node.editing .txt{cursor:text;}
+  /* 루트는 잡아서 옮길 수 있다 */
+  .node.isroot{cursor:grab;}
+  .node.isroot.dragging{cursor:grabbing;box-shadow:0 0 0 3px rgba(44,110,127,.16), 0 10px 28px rgba(24,35,56,.22);}
+  .node.isroot.editing{cursor:text;}
+
+  /* 사진 */
+  .node .media{position:relative;display:none;flex:0 0 auto;margin-bottom:7px;border-radius:8px;
+    overflow:hidden;background:var(--paper-2);}
+  .node.has-img .media{display:block;}
+  .node .media img{display:block;width:100%;height:auto;}
+  .node .media .rmimg{position:absolute;top:4px;right:4px;width:18px;height:18px;padding:0;border:none;
+    border-radius:50%;background:rgba(24,35,56,.62);color:#fff;font-size:11px;line-height:18px;
+    cursor:pointer;opacity:0;transition:opacity .12s;}
+  .node:hover .media .rmimg{opacity:1;}
+  /* 높이를 직접 지정한 블럭은 사진이 남는 공간을 채운다 */
+  .node.fixed-h .media{flex:1 1 0;min-height:0;}
+  .node.fixed-h .media img{width:100%;height:100%;object-fit:contain;}
+  .node.fixed-h .txt{min-height:0;}
+
+  /* 크기 조절 손잡이 */
+  .node .rz{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;
+    opacity:0;transition:opacity .12s;}
+  .node:hover .rz, .node.sel .rz{opacity:.6;}
+  .node .rz:after{content:"";position:absolute;right:3px;bottom:3px;width:8px;height:8px;
+    border-right:2px solid var(--edge);border-bottom:2px solid var(--edge);border-radius:0 0 3px 0;}
+
+  /* add-child handle */
+  .node .plus{position:absolute;right:-11px;top:-11px;width:22px;height:22px;border-radius:50%;
+    background:var(--ink);color:var(--white);border:2px solid var(--white);display:grid;place-items:center;
+    font-family:"Space Grotesk";font-size:15px;line-height:0;cursor:pointer;opacity:0;transform:scale(.7);
+    transition:.12s;box-shadow:0 2px 6px rgba(24,35,56,.25);}
+  .node:hover .plus, .node.sel .plus{opacity:1;transform:scale(1);}
+  .node .plus:hover{background:var(--sel);}
+  /* 사진 첨부 handle */
+  .node .imgbtn{position:absolute;left:-11px;bottom:-11px;width:22px;height:22px;padding:0;border-radius:50%;
+    background:var(--white);color:var(--ink-soft);border:1.5px solid var(--line);display:grid;place-items:center;
+    cursor:pointer;opacity:0;transform:scale(.7);transition:.12s;box-shadow:0 2px 6px rgba(24,35,56,.18);}
+  .node:hover .imgbtn, .node.sel .imgbtn{opacity:1;transform:scale(1);}
+  .node .imgbtn:hover{border-color:var(--ink);color:var(--ink);}
+  .node .imgbtn svg{display:block;}
+  .node .collapse{position:absolute;right:-10px;top:50%;transform:translateY(-50%);width:18px;height:18px;
+    border-radius:50%;background:var(--white);border:1.5px solid var(--edge);color:var(--ink-soft);
+    display:none;place-items:center;font-family:"Space Mono";font-size:11px;cursor:pointer;line-height:0;}
+  .node.has-kids .collapse{display:grid;}
+  .node.collapsed .collapse{background:var(--hi);border-color:var(--ink);color:var(--ink);}
+
+  /* ---------- Help / hint ---------- */
+  #hint{position:fixed;left:16px;bottom:16px;z-index:30;background:rgba(253,252,250,.92);
+    border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-width:270px;box-shadow:var(--shadow);
+    backdrop-filter:blur(6px);}
+  #hint h4{font-family:"Space Grotesk";margin:0 0 8px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-soft);display:flex;align-items:center;justify-content:space-between;}
+  #hint h4 button{background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:14px;line-height:1;padding:0;}
+  #hint ul{list-style:none;margin:0;padding:0;display:grid;gap:6px;}
+  #hint li{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink-soft);gap:12px;}
+  #hint.min ul{display:none;} #hint.min h4{margin:0;}
+
+  /* zoom pill */
+  #zoombar{position:fixed;right:16px;bottom:16px;z-index:30;display:flex;align-items:center;gap:2px;
+    background:var(--white);border:1px solid var(--line);border-radius:10px;padding:4px;box-shadow:var(--shadow);}
+  #zoombar .z{width:30px;height:30px;border:none;background:none;border-radius:7px;cursor:pointer;
+    font-family:"Space Mono";font-size:16px;color:var(--ink);display:grid;place-items:center;}
+  #zoombar .z:hover{background:var(--paper-2);}
+  #zoombar .pct{font-family:"Space Mono";font-size:12px;color:var(--ink-soft);min-width:46px;text-align:center;}
+
+  input[type=file]{display:none;}
+  @media (max-width:640px){
+    .brand span{display:none;}
+    #hint{display:none;}
+    .tools .lbl-txt{display:none;}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;}}
+</style>
+</head>
+<body>
+  <div class="bar">
+    <div class="brand">
+      <div class="arrow-badge">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <path d="M2 2 L11 11 M11 11 L11 6 M11 11 L6 11" stroke="#182338" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <b>흐름</b><span>flow · 오른쪽 아래로</span>
+    </div>
+    <div class="spacer"></div>
+    <span id="saved">저장됨</span>
+    <div class="tools">
+      <button class="btn" id="addChild" title="Tab"><span class="lbl-txt">＋ 하위</span><kbd>Tab</kbd></button>
+      <button class="btn ghost" id="addSib" title="Enter"><span class="lbl-txt">＋ 형제</span><kbd>↵</kbd></button>
+      <button class="btn ghost" id="addRootBtn" title="새 루트 추가 (Shift+Enter)"><span class="lbl-txt">＋ 루트</span><kbd>⇧↵</kbd></button>
+      <div class="sep"></div>
+      <button class="btn ghost" id="tidy" title="끌어다 놓은 루트를 다시 자동 정렬">정렬</button>
+      <button class="btn icon ghost" id="fit" title="화면 맞춤 (F)">
+        <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="#182338" stroke-width="1.4" stroke-linecap="round"><path d="M2 5V2h3M13 5V2h-3M2 10v3h3M13 10v3h-3"/></svg>
+      </button>
+      <div class="sep"></div>
+      <button class="btn ghost" id="importBtn" title="JSON 불러오기">불러오기</button>
+      <button class="btn ghost" id="exportJson" title="JSON 저장">JSON</button>
+      <button class="btn hi" id="exportPng" title="이미지 저장">PNG 내보내기</button>
+      <div class="sep"></div>
+      <button class="btn ghost" id="resetBtn" title="저장된 내용을 지우고 새로 시작">초기화</button>
+      <input type="file" id="fileInput" accept="application/json">
+      <input type="file" id="imgInput" accept="image/*">
+    </div>
+  </div>
+
+  <div id="stage">
+    <div id="world">
+      <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="origin"></div>
+      <div id="nodes"></div>
+    </div>
+  </div>
+
+  <div id="hint">
+    <h4>단축키 <button id="hintMin" title="접기">－</button></h4>
+    <ul>
+      <li>하위 노드 <kbd>Tab</kbd></li>
+      <li>형제 노드 <kbd>Enter</kbd></li>
+      <li>새 루트 <kbd>Shift+Enter</kbd></li>
+      <li>루트(흐름) 옮기기 <kbd>루트 드래그</kbd></li>
+      <li>내용 수정 <kbd>더블클릭</kbd></li>
+      <li>크기 조절 <kbd>모서리 드래그</kbd></li>
+      <li>크기 초기화 <kbd>모서리 더블클릭</kbd></li>
+      <li>사진 첨부 <kbd>왼쪽 아래 ◫</kbd> · <kbd>Ctrl+V</kbd></li>
+      <li>삭제 <kbd>Del</kbd></li>
+      <li>이동 <kbd>← ↑ ↓ →</kbd></li>
+      <li>화면 이동 <kbd>드래그</kbd> · 확대 <kbd>휠</kbd></li>
+    </ul>
+  </div>
+
+  <div id="zoombar">
+    <button class="z" id="zOut">−</button>
+    <span class="pct" id="zPct">100%</span>
+    <button class="z" id="zIn">+</button>
+  </div>
+
+<script>
+"use strict";
+/* ============================================================
+   흐름 — 오른쪽 아래로 뻗어나가는 마인드맵
+   깊이(depth)가 깊어질수록 오른쪽(+x), 형제가 늘수록 아래(+y)로.
+   부모는 첫 자식과 같은 행에 놓여 "계단식" 하강-우향 흐름을 만든다.
+   ============================================================ */
+
+const GAPX = 60;    // 컬럼(깊이) 사이 가로 여백
+const VGAP = 26;    // 노드 사이 세로 여백
+const DEPTH_COLORS = ['--d0','--d1','--d2','--d3','--d4','--d5'];
+const LS_KEY  = 'flow-mindmap-v1';   // 자동 저장 키
+const IMG_MAX = 900;                 // 첨부 사진 긴 변 최대 px
+const IMG_Q   = 0.78;                // 첨부 사진 JPEG 품질
+const MINW = 120, MAXW = 720, MINH = 44, MAXH = 900;
+
+const nodesEl = document.getElementById('nodes');
+const edgesEl = document.getElementById('edges');
+const worldEl = document.getElementById('world');
+const stageEl = document.getElementById('stage');
+const originEl= document.getElementById('origin');
+
+let uid = 1;
+const nid = () => 'n' + (uid++);
+
+// ----- 상태 -----
+let nodes = {};           // id -> {id, text, parent, children:[], collapsed, w, h, img}
+let roots = [];           // 최상위 노드들 (여러 개의 흐름을 한 화면에 둘 수 있다)
+let selected = null;
+let editing = null;
+
+// 뷰 변환
+let view = { x: 120, y: 90, k: 1 };
+
+// ----- 초기 예시 맵 -----
+function seed(){
+  const root = mk('내 웹사이트', null);
+  const a = mk('메인 페이지', root.id);
+  mk('히어로 섹션', a.id);
+  mk('소개', a.id);
+  const b = mk('기능', root.id);
+  mk('마인드맵 편집', b.id);
+  mk('내보내기', b.id);
+  mk('문의하기', root.id);
+  selected = root.id;
+}
+function mk(text, parent){
+  // fx/fy 는 루트를 끌어다 놓았을 때의 자유 좌표 (null 이면 자동 세로 정렬)
+  const n = { id:nid(), text, parent, children:[], collapsed:false, w:null, h:null, img:null, fx:null, fy:null };
+  nodes[n.id] = n;
+  if(parent) nodes[parent].children.push(n.id);
+  else roots.push(n.id);
+  return n;
+}
+const isRoot = id => nodes[id] && nodes[id].parent == null;
+const isFree = n => n && n.fx != null && n.fy != null;
+// 루트면 'ROOT' / 'ROOT 2' …, 아니면 빈 문자열
+function rootLabel(n){
+  const i = roots.indexOf(n.id);
+  if(i < 0) return '';
+  return roots.length > 1 ? 'ROOT ' + (i+1) : 'ROOT';
+}
+
+// ============================================================
+//  레이아웃 — 측정된 높이를 이용한 계단식 하강-우향 배치
+// ============================================================
+function measure(){
+  // 노드를 먼저 그려서 실제 크기를 잰다 (접혀 있던 노드도 잠시 펼쳐서 측정)
+  for(const id in nodes){
+    const n = nodes[id];
+    if(!n._el) continue;
+    n._el.style.display = '';
+    n._w = n._el.offsetWidth;
+    n._h = n._el.offsetHeight;
+  }
+}
+function layout(){
+  if(!roots.length) return;
+  // 1) 보이는 노드만 표시하고, 깊이별 컬럼 폭을 실제 블럭 폭에서 구한다
+  for(const id in nodes) nodes[id]._vis = false;
+  const colW = [];
+  const markVis = id=>{
+    const n = nodes[id]; if(!n) return;
+    n._vis = true;
+    const d = n._depth || 0;
+    colW[d] = Math.max(colW[d] || 0, n._w || 96);
+    if(!n.collapsed) n.children.forEach(markVis);
+  };
+  roots.forEach(markVis);
+  const colX = []; let acc = 0;
+  for(let d = 0; d < colW.length; d++){ colX[d] = acc; acc += (colW[d] || 96) + GAPX; }
+
+  // 2) 세로 배치 — 부모는 첫 자식과 같은 행(위쪽)에서 시작하고,
+  //    자기 높이와 자식 전체 높이 중 큰 쪽만큼 세로 자리를 차지한다.
+  //    → 블럭을 크게 키우면 아래쪽 가지가 그만큼 밀려 내려간다.
+  function place(id, top, depth, originX){
+    const n = nodes[id];
+    n.x = originX + (colX[depth] || 0);
+    n.y = top;
+    let bottom = top + (n._h || 44);
+    const kids = n.collapsed ? [] : n.children;
+    if(kids.length){
+      let y = top;
+      kids.forEach(cid=>{ y = place(cid, y, depth+1, originX) + VGAP; });
+      bottom = Math.max(bottom, y - VGAP);
+    }
+    return bottom;
+  }
+  // 끌어다 놓은 루트는 그 자리에서, 나머지는 지금까지처럼 위에서부터 차례로 쌓는다
+  let top = 0;
+  roots.forEach(id=>{
+    const n = nodes[id];
+    if(isFree(n)) place(id, n.fy, 0, n.fx);
+    else top = place(id, top, 0, 0) + VGAP;
+  });
+}
+
+// 계층 번호 매기기 (1, 1.1, 1.2 …) — 실제 구조를 담은 라벨
+function number(){
+  function walk(id, prefix, depth){
+    const n = nodes[id]; if(!n) return;
+    n._num = prefix;
+    n._depth = depth;
+    n.children.forEach((cid,i)=>{
+      walk(cid, prefix ? prefix + '.' + (i+1) : String(i+1), depth+1);
+    });
+  }
+  // 루트가 여럿이면 번호가 겹치지 않도록 루트 번호를 앞에 붙인다 (1.1, 2.1 …)
+  roots.forEach((id, i)=> walk(id, roots.length > 1 ? String(i+1) : '', 0));
+}
+
+// ============================================================
+//  렌더
+// ============================================================
+function render(){
+  number();
+  // 1) 노드 DOM 생성/갱신
+  const seen = new Set();
+  for(const id in nodes){
+    const n = nodes[id];
+    seen.add(id);
+    if(!n._el){
+      n._el = buildNode(n);
+      nodesEl.appendChild(n._el);
+    }
+    updateNodeContent(n);
+  }
+  // 제거된 노드 청소
+  [...nodesEl.children].forEach(el=>{
+    if(!nodes[el.dataset.id]){ el.remove(); }
+  });
+
+  measure();
+  layout();
+  positionNodes();
+  drawEdges();
+  applyView();
+}
+
+function buildNode(n){
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.dataset.id = n.id;
+  el.innerHTML =
+    '<div class="tag"><span class="swatch"></span><span class="numlbl"></span></div>'+
+    '<div class="media"><img alt=""><button class="rmimg" title="사진 삭제">✕</button></div>'+
+    '<div class="txt"></div>'+
+    '<div class="collapse" title="펼치기/접기"></div>'+
+    '<div class="plus" title="하위 노드 추가 (Tab)">＋</div>'+
+    '<button class="imgbtn" title="사진 첨부 (Ctrl+V 로 붙여넣기도 됩니다)">'+
+      '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3">'+
+      '<rect x="1" y="2" width="10" height="8" rx="1.5"/><path d="M1.6 8.6 4.3 6l2 1.8L8.2 6l2.2 2.1"/>'+
+      '<circle cx="4.2" cy="4.3" r=".9"/></svg>'+
+    '</button>'+
+    '<div class="rz" title="드래그하면 크기 조절 · 더블클릭하면 자동 크기"></div>';
+
+  el.addEventListener('mousedown', e=>{
+    e.stopPropagation();
+    if(editing) return;
+    select(n.id);
+    if(isRoot(n.id)) startRootDrag(n, e);   // 루트는 잡아서 옮길 수 있다
+  });
+  el.addEventListener('dblclick', e=>{ e.stopPropagation(); startEdit(n.id); });
+  el.querySelector('.plus').addEventListener('mousedown', e=>{
+    e.stopPropagation(); e.preventDefault(); select(n.id); addChild();
+  });
+  el.querySelector('.collapse').addEventListener('mousedown', e=>{
+    e.stopPropagation(); e.preventDefault(); toggleCollapse(n.id);
+  });
+  el.querySelector('.imgbtn').addEventListener('mousedown', e=>{
+    e.stopPropagation(); e.preventDefault(); select(n.id); pickImage(n.id);
+  });
+  el.querySelector('.rmimg').addEventListener('mousedown', e=>{
+    e.stopPropagation(); e.preventDefault(); n.img = null; render();
+  });
+  // 사진이 늦게 로드되면 높이가 바뀌므로 다시 배치
+  el.querySelector('.media img').addEventListener('load', relayout);
+
+  // 크기 조절
+  const rz = el.querySelector('.rz');
+  rz.addEventListener('mousedown', e=>{
+    e.stopPropagation(); e.preventDefault();
+    select(n.id);
+    const sw = el.offsetWidth, sh = el.offsetHeight, sx = e.clientX, sy = e.clientY;
+    const mm = ev=>{
+      n.w = clamp(sw + (ev.clientX - sx)/view.k, MINW, MAXW);
+      n.h = clamp(sh + (ev.clientY - sy)/view.k, MINH, MAXH);
+      applySize(n); relayout();
+    };
+    const mu = ()=>{
+      window.removeEventListener('mousemove', mm);
+      window.removeEventListener('mouseup', mu);
+      save();
+    };
+    window.addEventListener('mousemove', mm);
+    window.addEventListener('mouseup', mu);
+  });
+  rz.addEventListener('dblclick', e=>{
+    e.stopPropagation(); e.preventDefault();
+    n.w = null; n.h = null; applySize(n); relayout(); save();
+  });
+  const txt = el.querySelector('.txt');
+  txt.addEventListener('blur', ()=> commitEdit(n.id));
+  txt.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); txt.blur(); }
+    if(e.key==='Escape'){ e.preventDefault(); txt.blur(); }
+    e.stopPropagation();
+  });
+  return el;
+}
+
+function updateNodeContent(n){
+  const el = n._el;
+  const accent = 'var(' + DEPTH_COLORS[Math.min(n._depth||0, DEPTH_COLORS.length-1)] + ')';
+  el.style.setProperty('--accent', accent);
+  el.querySelector('.numlbl').textContent = rootLabel(n) || n._num;
+  const txt = el.querySelector('.txt');
+  if(editing !== n.id){
+    txt.textContent = n.text;
+    txt.classList.toggle('empty', !n.text);
+  }
+  el.classList.toggle('isroot', isRoot(n.id));
+  el.classList.toggle('has-kids', n.children.length>0);
+  el.classList.toggle('collapsed', n.collapsed);
+  el.querySelector('.collapse').textContent = n.collapsed ? n.children.length : '–';
+  el.classList.toggle('sel', selected===n.id);
+
+  // 사진
+  const img = el.querySelector('.media img');
+  el.classList.toggle('has-img', !!n.img);
+  if(n.img){ if(img.getAttribute('src') !== n.img) img.src = n.img; }
+  else if(img.hasAttribute('src')){ img.removeAttribute('src'); }
+
+  applySize(n);
+}
+
+// 루트를 끌어서 원하는 자리에 놓기 — 하위 노드가 통째로 따라온다
+function startRootDrag(n, e){
+  const sx = e.clientX, sy = e.clientY;
+  const ox = isFree(n) ? n.fx : n.x;
+  const oy = isFree(n) ? n.fy : n.y;
+  let moved = false;
+  const mm = ev=>{
+    const dx = ev.clientX - sx, dy = ev.clientY - sy;
+    if(!moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;   // 단순 클릭과 구분
+    if(!moved){ moved = true; n._el.classList.add('dragging'); }
+    n.fx = Math.round(ox + dx/view.k);
+    n.fy = Math.round(oy + dy/view.k);
+    relayout();
+  };
+  const mu = ()=>{
+    window.removeEventListener('mousemove', mm);
+    window.removeEventListener('mouseup', mu);
+    if(moved){ n._el.classList.remove('dragging'); save(); }
+  };
+  window.addEventListener('mousemove', mm);
+  window.addEventListener('mouseup', mu);
+}
+
+// 사용자가 지정한 크기를 DOM에 반영 (null 이면 자동 크기)
+function applySize(n){
+  const el = n._el; if(!el) return;
+  if(n.w){ el.style.width = n.w + 'px'; el.style.maxWidth = 'none'; }
+  else   { el.style.width = '';         el.style.maxWidth = ''; }
+  if(n.h){ el.style.height = n.h + 'px'; el.classList.add('fixed-h'); }
+  else   { el.style.height = '';         el.classList.remove('fixed-h'); }
+}
+const clamp = (v,lo,hi)=> Math.round(Math.min(hi, Math.max(lo, v)));
+
+// DOM 재생성 없이 배치만 다시 (드래그·사진 로드처럼 자주 일어나는 갱신용)
+function relayout(){ measure(); layout(); positionNodes(); drawEdges(); }
+
+function positionNodes(){
+  let maxX=0, maxY=0;
+  for(const id in nodes){
+    const n = nodes[id];
+    if(!n._vis){ n._el.style.display = 'none'; continue; }   // 접힌 가지는 숨긴다
+    n._el.style.display = '';
+    n._el.style.left = n.x + 'px';
+    n._el.style.top  = n.y + 'px';
+    maxX = Math.max(maxX, n.x + (n._w || n._el.offsetWidth));
+    maxY = Math.max(maxY, n.y + (n._h||44));
+  }
+  // 시작 마커 — 루트마다 하나씩
+  while(originEl.children.length < roots.length){
+    const m = document.createElement('div');
+    m.className = 'origin';
+    m.innerHTML = '<span class="ring"></span><span class="lbl">시작</span>';
+    originEl.appendChild(m);
+  }
+  while(originEl.children.length > roots.length) originEl.lastChild.remove();
+  roots.forEach((id, i)=>{
+    const r = nodes[id]; if(!r) return;
+    const m = originEl.children[i];
+    m.style.left = (r.x - 34) + 'px';
+    m.style.top  = (r.y + (r._h||44)/2) + 'px';
+  });
+  edgesEl.setAttribute('width', maxX + 60);
+  edgesEl.setAttribute('height', maxY + 60);
+  edgesEl.style.top = '0px';
+}
+
+function drawEdges(){
+  let d = '';
+  const paths = [];
+  for(const id in nodes){
+    const n = nodes[id];
+    if(n.collapsed || !n._vis) continue;
+    const px = n.x + (n._w || n._el.offsetWidth);
+    const py = n.y + (n._h||44)/2;
+    n.children.forEach(cid=>{
+      const c = nodes[cid];
+      const cx = c.x;
+      const cy = c.y + (c._h||44)/2;
+      const mx = px + (cx-px)*0.5;
+      const accent = 'var(' + DEPTH_COLORS[Math.min(c._depth||0, DEPTH_COLORS.length-1)] + ')';
+      paths.push(
+        `<path d="M ${px} ${py} C ${mx} ${py}, ${mx} ${cy}, ${cx} ${cy}" `+
+        `fill="none" stroke="${accent}" stroke-width="2" opacity="0.55" stroke-linecap="round"/>`
+      );
+    });
+  }
+  edgesEl.innerHTML = paths.join('');
+}
+
+function applyView(){
+  worldEl.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.k})`;
+  document.getElementById('zPct').textContent = Math.round(view.k*100)+'%';
+  save();   // render()·팬·줌이 모두 여기를 거치므로 자동 저장은 이 한 곳에서 처리한다
+}
+
+// ============================================================
+//  선택 / 편집
+// ============================================================
+function select(id){
+  // _el 은 render() 전에는 없을 수 있다 (불러오기 직후 등)
+  if(selected && nodes[selected] && nodes[selected]._el) nodes[selected]._el.classList.remove('sel');
+  selected = id;
+  if(id && nodes[id] && nodes[id]._el) nodes[id]._el.classList.add('sel');
+}
+
+function startEdit(id){
+  const n = nodes[id]; if(!n) return;
+  select(id);
+  editing = id;
+  const el = n._el; const txt = el.querySelector('.txt');
+  el.classList.add('editing');
+  txt.classList.remove('empty');
+  txt.setAttribute('contenteditable','true');
+  txt.textContent = n.text;
+  txt.focus();
+  const r = document.createRange(); r.selectNodeContents(txt);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+function commitEdit(id){
+  const n = nodes[id]; if(!n || editing!==id) return;
+  const txt = n._el.querySelector('.txt');
+  n.text = txt.textContent.trim();
+  txt.removeAttribute('contenteditable');
+  n._el.classList.remove('editing');
+  editing = null;
+  render();
+}
+
+// ============================================================
+//  구조 편집
+// ============================================================
+function addChild(){
+  if(!selected) return;
+  const p = nodes[selected];
+  if(p.collapsed) p.collapsed = false;
+  const c = mk('', selected);
+  render();
+  select(c.id);
+  ensureVisible(c.id);
+  startEdit(c.id);
+}
+function addSibling(){
+  if(!selected) return;
+  const n = nodes[selected];
+  if(isRoot(n.id)){ addRoot(); return; }   // 루트의 형제 = 새 루트
+  const parent = nodes[n.parent];
+  const idx = parent.children.indexOf(n.id);
+  const s = mk('', n.parent);
+  // 바로 다음 순서에 삽입
+  parent.children.pop();
+  parent.children.splice(idx+1, 0, s.id);
+  render();
+  select(s.id);
+  ensureVisible(s.id);
+  startEdit(s.id);
+}
+// 새 루트 — 선택한 루트 바로 다음(아래)에, 선택이 없으면 맨 끝에 붙는다
+function addRoot(){
+  const r = mk('', null);
+  const cur = selected && nodes[selected] ? topAncestor(selected) : null;
+  const idx = cur ? roots.indexOf(cur) : -1;
+  if(idx >= 0){
+    roots.pop();
+    roots.splice(idx+1, 0, r.id);
+  }
+  render();
+  select(r.id);
+  ensureVisible(r.id);
+  startEdit(r.id);
+}
+function topAncestor(id){
+  let n = nodes[id];
+  while(n && n.parent) n = nodes[n.parent];
+  return n ? n.id : null;
+}
+function delNode(){
+  if(!selected || !nodes[selected]) return;
+  const n = nodes[selected];
+  const rm = id=>{ nodes[id].children.slice().forEach(rm); delete nodes[id]; };
+
+  if(isRoot(n.id)){
+    if(roots.length <= 1) return;          // 마지막 루트는 지우지 않는다
+    const idx = roots.indexOf(n.id);
+    rm(n.id);
+    roots.splice(idx, 1);
+    render();
+    select(roots[Math.min(idx, roots.length-1)]);
+    return;
+  }
+  const parent = nodes[n.parent];
+  const idx = parent.children.indexOf(n.id);
+  rm(n.id);
+  parent.children.splice(idx, 1);
+  const next = parent.children[Math.min(idx, parent.children.length-1)] || n.parent;
+  render();
+  select(next);
+}
+function toggleCollapse(id){
+  const n = nodes[id];
+  if(n.children.length===0) return;
+  n.collapsed = !n.collapsed;
+  render();
+}
+
+// 방향키 이동
+function move(dir){
+  if(!selected) return;
+  const n = nodes[selected];
+  if(dir==='left' && n.parent){ select(n.parent); ensureVisible(n.parent); return; }
+  if(dir==='right' && n.children.length && !n.collapsed){ select(n.children[0]); ensureVisible(n.children[0]); return; }
+  if(dir==='up'||dir==='down'){
+    const sib = n.parent ? nodes[n.parent].children : roots;   // 루트끼리도 오르내린다
+    let i = sib.indexOf(n.id) + (dir==='down'?1:-1);
+    if(i>=0 && i<sib.length){ select(sib[i]); ensureVisible(sib[i]); }
+  }
+}
+
+// 새 노드가 화면 밖이면 부드럽게 팬
+function ensureVisible(id){
+  const n = nodes[id]; if(!n) return;
+  const pad = 90;
+  const sx = view.x + n.x*view.k;
+  const sy = view.y + n.y*view.k;
+  const w = n._el.offsetWidth*view.k, h = (n._h||44)*view.k;
+  const vw = stageEl.clientWidth, vh = stageEl.clientHeight;
+  if(sx < pad) view.x += (pad - sx);
+  if(sy < pad) view.y += (pad - sy);
+  if(sx + w > vw - pad) view.x -= (sx + w - (vw - pad));
+  if(sy + h > vh - pad) view.y -= (sy + h - (vh - pad));
+  applyView();
+}
+
+// ============================================================
+//  팬 / 줌
+// ============================================================
+let panning=false, panStart=null;
+stageEl.addEventListener('mousedown', e=>{
+  if(editing) return;
+  panning=true; stageEl.classList.add('panning');
+  panStart={x:e.clientX-view.x, y:e.clientY-view.y};
+  select(null); selected=null;
+});
+window.addEventListener('mousemove', e=>{
+  if(!panning) return;
+  view.x = e.clientX - panStart.x;
+  view.y = e.clientY - panStart.y;
+  applyView();
+});
+window.addEventListener('mouseup', ()=>{ panning=false; stageEl.classList.remove('panning'); });
+
+stageEl.addEventListener('wheel', e=>{
+  e.preventDefault();
+  const rect = stageEl.getBoundingClientRect();
+  const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+  const factor = e.deltaY<0 ? 1.1 : 1/1.1;
+  zoomAt(mx, my, factor);
+},{passive:false});
+
+function zoomAt(mx, my, factor){
+  const k2 = Math.min(2.4, Math.max(0.25, view.k*factor));
+  const r = k2/view.k;
+  view.x = mx - (mx - view.x)*r;
+  view.y = my - (my - view.y)*r;
+  view.k = k2;
+  applyView();
+}
+function zoomCenter(factor){
+  zoomAt(stageEl.clientWidth/2, stageEl.clientHeight/2, factor);
+}
+
+function fit(){
+  const ids = Object.keys(nodes).filter(id=>nodes[id]._vis); if(!ids.length) return;
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  ids.forEach(id=>{
+    const n=nodes[id];
+    minX=Math.min(minX,n.x); minY=Math.min(minY,n.y);
+    maxX=Math.max(maxX,n.x+(n._w||n._el.offsetWidth)); maxY=Math.max(maxY,n.y+(n._h||44));
+  });
+  const pad=80;
+  const vw=stageEl.clientWidth, vh=stageEl.clientHeight;
+  // 아직 레이아웃 전이라 화면이 0에 가까울 때 음수 배율이 나오지 않도록 하한을 둔다
+  const availW=Math.max(160, vw-pad*2), availH=Math.max(160, vh-pad*2);
+  const k = Math.min(1.4, availW/Math.max(1,maxX-minX), availH/Math.max(1,maxY-minY));
+  view.k = Math.max(0.25, k);
+  view.x = pad - minX*view.k + (vw-pad*2-(maxX-minX)*view.k)/2;
+  view.y = pad - minY*view.k;
+  applyView();
+}
+
+// ============================================================
+//  키보드
+// ============================================================
+document.addEventListener('keydown', e=>{
+  if(editing){ return; }
+  const tag = e.target.tagName;
+  if(tag==='INPUT'||tag==='TEXTAREA') return;
+  switch(e.key){
+    case 'Tab': e.preventDefault(); addChild(); break;
+    case 'Enter': e.preventDefault(); e.shiftKey ? addRoot() : addSibling(); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); delNode(); break;
+    case 'ArrowLeft': e.preventDefault(); move('left'); break;
+    case 'ArrowRight': e.preventDefault(); move('right'); break;
+    case 'ArrowUp': e.preventDefault(); move('up'); break;
+    case 'ArrowDown': e.preventDefault(); move('down'); break;
+    case 'F2': case ' ': if(selected){ e.preventDefault(); startEdit(selected);} break;
+    case 'f': case 'F': fit(); break;
+  }
+});
+
+// ============================================================
+//  툴바 버튼
+// ============================================================
+document.getElementById('addChild').onclick = ()=> selected ? addChild() : null;
+document.getElementById('addSib').onclick   = ()=> selected ? addSibling() : null;
+document.getElementById('addRootBtn').onclick = addRoot;
+document.getElementById('fit').onclick      = fit;
+document.getElementById('tidy').onclick     = ()=>{
+  roots.forEach(id=>{ nodes[id].fx = null; nodes[id].fy = null; });
+  render(); fit();
+};
+document.getElementById('zIn').onclick      = ()=> zoomCenter(1.15);
+document.getElementById('zOut').onclick     = ()=> zoomCenter(1/1.15);
+document.getElementById('hintMin').onclick  = ()=> document.getElementById('hint').classList.toggle('min');
+
+// ============================================================
+//  사진 첨부
+// ============================================================
+const imgInput = document.getElementById('imgInput');
+let imgTarget = null;
+
+function pickImage(id){ imgTarget = id; imgInput.click(); }
+imgInput.onchange = e=>{
+  const f = e.target.files[0]; e.target.value='';
+  if(f && imgTarget) setImage(imgTarget, f);
+};
+// 선택한 블럭에 클립보드 이미지 붙여넣기
+document.addEventListener('paste', e=>{
+  if(editing || !selected || !nodes[selected]) return;
+  const items = [...(e.clipboardData && e.clipboardData.items || [])];
+  const it = items.find(i => i.type.indexOf('image/') === 0);
+  if(!it) return;
+  e.preventDefault();
+  setImage(selected, it.getAsFile());
+});
+
+function setImage(id, file){
+  if(!file) return;
+  shrinkImage(file).then(url=>{
+    const n = nodes[id]; if(!n) return;
+    n.img = url;
+    render();
+  }).catch(()=> alert('이미지를 읽지 못했어요.'));
+}
+
+// 브라우저 저장 용량(약 5MB)을 넘기지 않도록 긴 변 IMG_MAX 로 줄여 JPEG 로 다시 인코딩한다
+function shrinkImage(file){
+  return new Promise((res, rej)=>{
+    const fr = new FileReader();
+    fr.onerror = rej;
+    fr.onload = ()=>{
+      const im = new Image();
+      im.onerror = rej;
+      im.onload = ()=>{
+        const s = Math.min(1, IMG_MAX / Math.max(im.width, im.height));
+        const w = Math.max(1, Math.round(im.width*s)), h = Math.max(1, Math.round(im.height*s));
+        const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+        const cx = cv.getContext('2d');
+        cx.fillStyle = '#fff'; cx.fillRect(0,0,w,h);   // 투명 배경은 흰색으로
+        cx.drawImage(im, 0, 0, w, h);
+        res(cv.toDataURL('image/jpeg', IMG_Q));
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+// ============================================================
+//  자동 저장 (localStorage) — 창을 닫았다 열어도 그대로
+// ============================================================
+function serialize(){
+  const data = { v:2, roots:[...roots], root:roots[0], uid, view:{...view}, nodes:{} };
+  for(const id in nodes){
+    const n = nodes[id];
+    data.nodes[id] = {id:n.id, text:n.text, parent:n.parent, children:n.children,
+                      collapsed:n.collapsed, w:n.w, h:n.h, img:n.img, fx:n.fx, fy:n.fy};
+  }
+  return data;
+}
+// 예전 저장본(root 하나)과 새 저장본(roots 배열)을 모두 읽는다
+function readRoots(d){
+  const list = Array.isArray(d.roots) ? d.roots : (d.root ? [d.root] : []);
+  const seen = list.filter(id => d.nodes[id]);
+  // roots 목록이 없거나 빠진 게 있으면 parent 가 없는 노드에서 복구한다
+  for(const id in d.nodes){
+    if(d.nodes[id].parent == null && seen.indexOf(id) < 0) seen.push(id);
+  }
+  return seen;
+}
+function adopt(d){
+  nodesEl.innerHTML=''; nodes={}; editing=null;
+  for(const id in d.nodes){ nodes[id] = {w:null, h:null, img:null, fx:null, fy:null, ...d.nodes[id], _el:null}; }
+  roots = readRoots(d);
+  uid = d.uid || (Object.keys(d.nodes).length + 1);
+  selected = roots[0];
+  if(d.view) view = {...view, ...d.view};
+}
+
+let saveTimer = null;
+function save(){ clearTimeout(saveTimer); saveTimer = setTimeout(writeStore, 250); }
+function writeStore(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify(serialize()));
+    flash('저장됨');
+  }catch(err){
+    flash('저장 실패 — 용량 초과');
+    if(!writeStore.warned){
+      writeStore.warned = true;
+      alert('브라우저 저장 공간이 가득 찼어요.\n사진 수를 줄이거나, JSON 으로 내보내 백업해 주세요.');
+    }
+  }
+}
+function flash(t){
+  const el = document.getElementById('saved');
+  el.textContent = t; el.classList.add('on');
+  clearTimeout(flash._t);
+  flash._t = setTimeout(()=> el.classList.remove('on'), 1400);
+}
+function loadStore(){
+  let raw = null;
+  try{ raw = localStorage.getItem(LS_KEY); }catch(e){ return false; }
+  if(!raw) return false;
+  try{
+    const d = JSON.parse(raw);
+    if(!d || !d.nodes || !readRoots(d).length) return false;
+    adopt(d);
+    return true;
+  }catch(e){ return false; }
+}
+
+document.getElementById('resetBtn').onclick = ()=>{
+  if(!confirm('저장된 내용을 모두 지우고 새로 시작할까요? 되돌릴 수 없어요.')) return;
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  location.reload();
+};
+
+// ---- JSON 저장/불러오기 ----
+document.getElementById('exportJson').onclick = ()=>{
+  download('mindmap.json', JSON.stringify(serialize(), null, 2), 'application/json');
+};
+document.getElementById('importBtn').onclick = ()=> document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange = e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      if(!d || !d.nodes || !readRoots(d).length) throw new Error("bad");
+      adopt(d);
+      render(); fit();
+    }catch(err){ alert('불러오기에 실패했어요: 올바른 JSON 파일인지 확인해 주세요.'); }
+  };
+  r.readAsText(f);
+  e.target.value='';
+};
+
+// ---- PNG 내보내기 (캔버스로 직접 렌더) ----
+document.getElementById('exportPng').onclick = exportPNG;
+async function exportPNG(){
+  const ids=Object.keys(nodes).filter(id=>nodes[id]._vis); if(!ids.length) return;
+  // 첨부 사진을 먼저 로드해 둔다
+  const pics={};
+  await Promise.all(ids.filter(id=>nodes[id].img).map(id=>new Promise(res=>{
+    const im=new Image();
+    im.onload=()=>{pics[id]=im;res();}; im.onerror=()=>res();
+    im.src=nodes[id].img;
+  })));
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  ids.forEach(id=>{const n=nodes[id];
+    minX=Math.min(minX,n.x);minY=Math.min(minY,n.y);
+    maxX=Math.max(maxX,n.x+(n._w||n._el.offsetWidth));maxY=Math.max(maxY,n.y+(n._h||44));});
+  const pad=60;
+  const W=(maxX-minX)+pad*2, H=(maxY-minY)+pad*2;
+  const scale=2;
+  const cv=document.createElement('canvas');
+  cv.width=W*scale; cv.height=H*scale;
+  const ctx=cv.getContext('2d'); ctx.scale(scale,scale);
+  const css=getComputedStyle(document.documentElement);
+  const col=k=>css.getPropertyValue(k).trim();
+  const depthCol=d=>col(DEPTH_COLORS[Math.min(d, DEPTH_COLORS.length-1)]);
+  const off=(x,y)=>[x-minX+pad, y-minY+pad];
+
+  // 배경 + 도트
+  ctx.fillStyle=col('--paper'); ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=col('--dot');
+  for(let x=(pad%26);x<W;x+=26) for(let y=(pad%26);y<H;y+=26){ctx.beginPath();ctx.arc(x,y,1.3,0,7);ctx.fill();}
+
+  // 엣지
+  ids.forEach(id=>{const n=nodes[id]; if(n.collapsed) return;
+    const [px,py]=off(n.x+(n._w||n._el.offsetWidth), n.y+(n._h||44)/2);
+    n.children.forEach(cid=>{const c=nodes[cid]; if(!c._vis) return;
+      const [cx,cy]=off(c.x, c.y+(c._h||44)/2);
+      const mx=px+(cx-px)*0.5;
+      ctx.strokeStyle=depthCol(c._depth||0); ctx.globalAlpha=.55; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(px,py); ctx.bezierCurveTo(mx,py,mx,cy,cx,cy); ctx.stroke();
+      ctx.globalAlpha=1;});
+  });
+
+  // 노드
+  ids.forEach(id=>{const n=nodes[id];
+    const el=n._el;
+    const w=n._w||el.offsetWidth, h=n._h||44;
+    const [x,y]=off(n.x,n.y);
+    roundRect(ctx,x,y,w,h,12);
+    ctx.fillStyle=col('--white'); ctx.fill();
+    ctx.strokeStyle=(selected===n.id)?col('--sel'):col('--line'); ctx.lineWidth=1.5; ctx.stroke();
+    // 태그 — 화면에 그려진 위치를 그대로 따른다
+    const tagEl=el.querySelector('.tag');
+    ctx.fillStyle=depthCol(n._depth||0);
+    ctx.fillRect(x+12, y+tagEl.offsetTop+3, 7, 7);
+    ctx.font='700 10px "Space Mono", monospace';
+    ctx.fillText(rootLabel(n)||n._num, x+24, y+tagEl.offsetTop+10);
+    // 사진
+    const mEl=el.querySelector('.media');
+    if(pics[id] && mEl && mEl.offsetHeight){
+      const mx=x+mEl.offsetLeft, my=y+mEl.offsetTop, mw=mEl.offsetWidth, mh=mEl.offsetHeight;
+      ctx.save();
+      roundRect(ctx,mx,my,mw,mh,8); ctx.clip();
+      ctx.fillStyle=col('--paper-2'); ctx.fillRect(mx,my,mw,mh);
+      const im=pics[id], s=Math.min(mw/im.width, mh/im.height);
+      const dw=im.width*s, dh=im.height*s;
+      ctx.drawImage(im, mx+(mw-dw)/2, my+(mh-dh)/2, dw, dh);
+      ctx.restore();
+    }
+    // 텍스트
+    const txtEl=el.querySelector('.txt');
+    ctx.save();
+    roundRect(ctx,x,y,w,h,12); ctx.clip();
+    ctx.fillStyle=col('--ink');
+    ctx.font='500 14px Inter, sans-serif';
+    wrapText(ctx, n.text||'', x+12, y+txtEl.offsetTop+13, w-24, 18);
+    ctx.restore();
+  });
+
+  cv.toBlob(b=>{ downloadBlob('mindmap.png', b); }, 'image/png');
+}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);
+  ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function wrapText(ctx,text,x,y,maxW,lh){
+  const words=String(text).split(/(\s+)/); let line='';
+  for(const w of words){
+    if(ctx.measureText(line+w).width>maxW && line){ ctx.fillText(line.trim(),x,y); line=w; y+=lh; }
+    else line+=w;
+  }
+  if(line) ctx.fillText(line.trim(),x,y);
+}
+function download(name,text,type){ downloadBlob(name, new Blob([text],{type})); }
+function downloadBlob(name,blob){
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+
+// ============================================================
+//  시작
+// ============================================================
+const restored = loadStore();          // 저장된 내용이 있으면 그대로, 없으면 예시 맵
+if(!restored) seed();
+render();
+// 웹폰트가 적용되면 글자 폭이 달라지므로 다시 재고 배치한다
+// (rAF 는 백그라운드 탭에서 안 돌기 때문에 fonts.ready 를 쓴다)
+const afterFonts = ()=>{
+  render();
+  if(!restored) fitWhenReady();        // 복원한 경우엔 저장해 둔 화면 위치를 유지
+};
+// 백그라운드 탭 등에서 화면 크기가 아직 잡히지 않았으면 배율이 엉뚱하게 잡힌다
+let fitTries = 0;
+function fitWhenReady(){
+  if(fitTries++ < 40 && (stageEl.clientWidth < 240 || stageEl.clientHeight < 200)){
+    setTimeout(fitWhenReady, 120); return;
+  }
+  fit();
+}
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(afterFonts);
+else setTimeout(afterFonts, 300);
+window.addEventListener('resize', applyView);
+</script>
+</body>
+</html>
